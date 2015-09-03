@@ -5,8 +5,7 @@
   module.exports = DOMEventMessageBus = (function() {
     function DOMEventMessageBus(arg) {
       var receiveEvent, sendEvent;
-      this.DOMNode = arg.DOMNode, sendEvent = arg.sendEvent, receiveEvent = arg.receiveEvent, this.timeout = arg.timeout;
-      Object.bindAll(this);
+      this.name = arg.name, this.DOMNode = arg.DOMNode, sendEvent = arg.sendEvent, receiveEvent = arg.receiveEvent, this.timeout = arg.timeout;
       this.timeout || (this.timeout = 1000);
       this.lastMessageId = Date.now();
       this.messagesPendingReceipt = {};
@@ -19,8 +18,11 @@
       })(this));
     }
 
+    DOMEventMessageBus.prototype.log = function(string) {
+      return console.log("%c" + this.name + " " + string, 'color: purple');
+    };
+
     DOMEventMessageBus.prototype.dispatchEvent = function(event, message) {
-      console.info('DISPATCH EVENT', event, message);
       if (!this.DOMNode.dispatchEvent(new CustomEvent(event, {
         detail: message
       }))) {
@@ -29,40 +31,68 @@
       return this;
     };
 
-    DOMEventMessageBus.prototype.sendMessage = function(type, payload) {
+    DOMEventMessageBus.prototype.generateMessageUUID = function() {
+      return this.name + "-" + (this.lastMessageId++);
+    };
+
+    DOMEventMessageBus.prototype._sendMessage = function(type, payload) {
       var message;
       message = {
-        id: this.lastMessageId++,
+        id: this.generateMessageUUID(),
         type: type,
         payload: payload
       };
+      this.dispatchEvent(this.SEND_EVENT, message);
+      return message.id;
+    };
+
+    DOMEventMessageBus.prototype.sendMessage = function(type, payload) {
       return new Promise((function(_this) {
         return function(resolve, reject) {
-          var timeout;
-          _this.messagesPendingReceipt[message.id] = resolve;
+          var id, timeout, timeoutId;
+          _this.log('A');
+          id = _this._sendMessage(type, payload);
+          _this.log('B');
           timeout = function() {
-            console.log("did message " + message.id + " timeout?", _this.messagesPendingReceipt[message.id]);
-            if (!_this.messagesPendingReceipt[message.id]) {
+            _this.log("did message " + id + " timeout?", _this.messagesPendingReceipt[id]);
+            if (!_this.messagesPendingReceipt[id]) {
               return;
             }
+            console.log('MESSAGE PROMISE BEING REJECTED');
             return reject({
               error: 'timeout sending message to Torflix'
             });
           };
-          setTimeout(_this.timeout, timeout);
-          return _this.dispatchEvent(_this.SEND_EVENT, message);
+          timeoutId = setTimeout(_this.timeout, timeout);
+          _this.messagesPendingReceipt[id] = function(response) {
+            console.log('MESSAGE PROMISE BEING RESOLVED');
+            clearTimeout(timeoutId);
+            return resolve(response);
+          };
+          _this.log("PENDING CALLBACL " + id + " of " + (Object.keys(_this.messagesPendingReceipt)));
+          return _this.log("SENT:    " + type + " " + id + " " + (JSON.stringify(payload)));
         };
       })(this));
     };
 
-    DOMEventMessageBus.prototype.receiveMessage = function(arg) {
+    DOMEventMessageBus.prototype.receiveMessage = function(message) {
       var id, payload, resolve, type;
-      id = arg.id, type = arg.type, payload = arg.payload;
-      if (type === 'messageReceipt') {
+      id = message.id, type = message.type, payload = message.payload;
+      this.log("RECEIVED: " + type + " " + id + " " + (JSON.stringify(payload)));
+      if (message.type === 'messageReceipt') {
+        id = message.payload;
         resolve = this.messagesPendingReceipt[id];
+        this.log("resolving messsage " + id + " of " + (Object.keys(this.messagesPendingReceipt)));
         delete this.messagesPendingReceipt[id];
         return typeof resolve === "function" ? resolve() : void 0;
+      } else {
+        this.sendMessageReceipt(message);
+        return this.onReceiveMessage(message);
       }
+    };
+
+    DOMEventMessageBus.prototype.sendMessageReceipt = function(message) {
+      return this._sendMessage('messageReceipt', message.id);
     };
 
     return DOMEventMessageBus;

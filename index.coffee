@@ -1,4 +1,5 @@
 # require 'stdlibjs/Promise'
+# require 'stdlibjs/Promise'
 # require 'stdlibjs/Function#delay'
 
 
@@ -10,8 +11,7 @@
 
 module.exports = class DOMEventMessageBus
 
-  constructor: ({@DOMNode, sendEvent, receiveEvent, @timeout}) ->
-    Object.bindAll(this)
+  constructor: ({@name, @DOMNode, sendEvent, receiveEvent, @timeout}) ->
     @timeout ||= 1000 # <- shorten
     @lastMessageId = Date.now()
     @messagesPendingReceipt = {}
@@ -20,36 +20,59 @@ module.exports = class DOMEventMessageBus
     @DOMNode.addEventListener @RECEIVE_EVENT, (event) =>
       @receiveMessage(event.detail)
 
+  log: (string) ->
+    console.log("%c#{@name} #{string}", 'color: purple')
+
   dispatchEvent: (event, message) ->
-    console.info('DISPATCH EVENT', event, message)
     debugger unless @DOMNode.dispatchEvent(new CustomEvent(event, {detail:message}))
     this
 
+  generateMessageUUID: ->
+    "#{@name}-#{@lastMessageId++}"
 
-  sendMessage: (type, payload) ->
+  _sendMessage: (type, payload) ->
     message =
-      id: @lastMessageId++
+      id: @generateMessageUUID()
       type: type
       payload: payload
+    @dispatchEvent(@SEND_EVENT, message)
+    message.id
 
+  sendMessage: (type, payload) ->
     return new Promise (resolve, reject) =>
-      @messagesPendingReceipt[message.id] = resolve
+      @log('A')
+      id = @_sendMessage(type, payload)
+      @log('B')
 
       timeout = =>
-        console.log("did message #{message.id} timeout?", @messagesPendingReceipt[message.id])
-        return unless @messagesPendingReceipt[message.id]
+        @log("did message #{id} timeout?", @messagesPendingReceipt[id])
+        return unless @messagesPendingReceipt[id]
+        console.log('MESSAGE PROMISE BEING REJECTED')
         reject({error:'timeout sending message to Torflix'})
 
-      setTimeout(@timeout, timeout)
+      timeoutId = setTimeout(@timeout, timeout)
 
-      @dispatchEvent(@SEND_EVENT, message)
+      @messagesPendingReceipt[id] = (response) ->
+        console.log('MESSAGE PROMISE BEING RESOLVED')
+        clearTimeout(timeoutId)
+        resolve(response)
+      @log("PENDING CALLBACL #{id} of #{Object.keys(@messagesPendingReceipt)}")
 
+      @log("SENT:    #{type} #{id} #{JSON.stringify(payload)}")
 
-
-  receiveMessage: ({id, type, payload}) ->
-    if type == 'messageReceipt'
+  receiveMessage: (message) ->
+    {id, type, payload} = message
+    @log("RECEIVED: #{type} #{id} #{JSON.stringify(payload)}")
+    if message.type == 'messageReceipt'
+      id = message.payload
       resolve = @messagesPendingReceipt[id]
+      @log("resolving messsage #{id} of #{Object.keys(@messagesPendingReceipt)}")
       delete @messagesPendingReceipt[id]
       resolve?()
+    else
+      @sendMessageReceipt(message)
+      @onReceiveMessage(message)
 
 
+  sendMessageReceipt: (message) ->
+    @_sendMessage 'messageReceipt', message.id
