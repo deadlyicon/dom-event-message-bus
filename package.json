@@ -1,0 +1,19 @@
+{
+  "name": "dom-event-message-bus",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/deadlyicon/dom-event-message-bus.git"
+  },
+  "author": "Jared Grippe",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/deadlyicon/dom-event-message-bus/issues"
+  },
+  "homepage": "https://github.com/deadlyicon/dom-event-message-bus#readme"
+}
