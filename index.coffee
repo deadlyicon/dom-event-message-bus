@@ -7,21 +7,20 @@
 # over an async event bus system
 
 
-
+DIDNT_RESPOND = {DIDNT_RESPOND: true}
 
 module.exports = class DOMEventMessageBus
 
-  constructor: ({@name, @DOMNode, sendEvent, receiveEvent, @timeout}) ->
+  constructor: ({@name, @color, @DOMNode, sendEvent, receiveEvent, @timeout}) ->
     @timeout ||= 1000 # <- shorten
     @lastMessageId = Date.now()
-    @messagesPendingReceipt = {}
     @SEND_EVENT    = sendEvent
     @RECEIVE_EVENT = receiveEvent
     @DOMNode.addEventListener @RECEIVE_EVENT, (event) =>
       @receiveMessage(event.detail)
 
   log: (string) ->
-    console.log("%c#{@name} #{string}", 'color: purple')
+    console.log("%c#{@name} #{string}", "color: #{@color}; font-weight: bold; ")
 
   dispatchEvent: (event, message) ->
     debugger unless @DOMNode.dispatchEvent(new CustomEvent(event, {detail:message}))
@@ -30,49 +29,45 @@ module.exports = class DOMEventMessageBus
   generateMessageUUID: ->
     "#{@name}-#{@lastMessageId++}"
 
-  _sendMessage: (type, payload) ->
-    message =
-      id: @generateMessageUUID()
-      type: type
-      payload: payload
-    @dispatchEvent(@SEND_EVENT, message)
-    message.id
-
+  # sync
   sendMessage: (type, payload) ->
-    return new Promise (resolve, reject) =>
-      @log('A')
-      id = @_sendMessage(type, payload)
-      @log('B')
+    id = @generateMessageUUID()
+    message = {id, type, payload}
 
-      timeout = =>
-        @log("did message #{id} timeout?", @messagesPendingReceipt[id])
-        return unless @messagesPendingReceipt[id]
-        console.log('MESSAGE PROMISE BEING REJECTED')
-        reject({error:'timeout sending message to Torflix'})
+    response = DIDNT_RESPOND
+    eventType = "messageResponse-#{id}"
+    handler = (event) =>
+      @DOMNode.removeEventListener(eventType,handler)
+      response = event.detail
+    @DOMNode.addEventListener(eventType,handler)
+    @dispatchEvent(@SEND_EVENT, message)
 
-      timeoutId = setTimeout(@timeout, timeout)
-
-      @messagesPendingReceipt[id] = (response) ->
-        console.log('MESSAGE PROMISE BEING RESOLVED')
-        clearTimeout(timeoutId)
-        resolve(response)
-      @log("PENDING CALLBACL #{id} of #{Object.keys(@messagesPendingReceipt)}")
-
-      @log("SENT:    #{type} #{id} #{JSON.stringify(payload)}")
+    if response == DIDNT_RESPOND
+      error = new Error('DOMEventMessageBus::NoResponseError')
+      error.isDOMEventMessageBusNoResponseError = true
+      error.message = message
+      throw error
+    return response
 
   receiveMessage: (message) ->
     {id, type, payload} = message
-    @log("RECEIVED: #{type} #{id} #{JSON.stringify(payload)}")
-    if message.type == 'messageReceipt'
-      id = message.payload
-      resolve = @messagesPendingReceipt[id]
-      @log("resolving messsage #{id} of #{Object.keys(@messagesPendingReceipt)}")
-      delete @messagesPendingReceipt[id]
-      resolve?()
+    @log("RECEIVED: #{id} #{type} #{JSON.stringify(payload)}")
+    response = if message.type == 'echo'
+      message.payload
     else
-      @sendMessageReceipt(message)
       @onReceiveMessage(message)
+    @replyToMessage(message, response)
 
+  replyToMessage: (message, response) ->
+    {id, type, payload} = message
+    @log("REPLIED:  #{id} #{JSON.stringify(response)}")
+    @dispatchEvent("messageResponse-#{id}", response)
 
-  sendMessageReceipt: (message) ->
-    @_sendMessage 'messageReceipt', message.id
+  isReady: ->
+    try
+      @sendMessage('echo','ready?') == 'ready?'
+    catch error
+      if error.isDOMEventMessageBusNoResponseError
+        return false
+      else
+        throw error
