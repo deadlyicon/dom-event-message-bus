@@ -20,11 +20,19 @@ module.exports = class DOMEventMessageBus
       @receiveMessage(event.detail)
 
   log: (string) ->
-    console.log("%c#{@name} #{string}", "color: #{@color}; font-weight: bold; ")
+    # console.log("%c#{@name} #{string}", "color: #{@color}; font-weight: bold; ")
 
   dispatchEvent: (event, message) ->
     debugger unless @DOMNode.dispatchEvent(new CustomEvent(event, {detail:message}))
     this
+
+  onNext: (eventType, handler) ->
+    wrapper = (event) =>
+      @DOMNode.removeEventListener(eventType, wrapper)
+      handler(event.detail)
+    @DOMNode.addEventListener(eventType, wrapper)
+    this
+
 
   generateMessageUUID: ->
     "#{@name}-#{@lastMessageId++}"
@@ -41,7 +49,7 @@ module.exports = class DOMEventMessageBus
       response = event.detail
     @DOMNode.addEventListener(eventType,handler)
     @dispatchEvent(@SEND_EVENT, message)
-
+    @DOMNode.removeEventListener(eventType,handler)
     if response == DIDNT_RESPOND
       error = new Error('DOMEventMessageBus::NoResponseError')
       error.isDOMEventMessageBusNoResponseError = true

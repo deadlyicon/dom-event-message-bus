@@ -21,9 +21,7 @@
       })(this));
     }
 
-    DOMEventMessageBus.prototype.log = function(string) {
-      return console.log("%c" + this.name + " " + string, "color: " + this.color + "; font-weight: bold; ");
-    };
+    DOMEventMessageBus.prototype.log = function(string) {};
 
     DOMEventMessageBus.prototype.dispatchEvent = function(event, message) {
       if (!this.DOMNode.dispatchEvent(new CustomEvent(event, {
@@ -31,6 +29,18 @@
       }))) {
         debugger;
       }
+      return this;
+    };
+
+    DOMEventMessageBus.prototype.onNext = function(eventType, handler) {
+      var wrapper;
+      wrapper = (function(_this) {
+        return function(event) {
+          _this.DOMNode.removeEventListener(eventType, wrapper);
+          return handler(event.detail);
+        };
+      })(this);
+      this.DOMNode.addEventListener(eventType, wrapper);
       return this;
     };
 
@@ -56,6 +66,7 @@
       })(this);
       this.DOMNode.addEventListener(eventType, handler);
       this.dispatchEvent(this.SEND_EVENT, message);
+      this.DOMNode.removeEventListener(eventType, handler);
       if (response === DIDNT_RESPOND) {
         error = new Error('DOMEventMessageBus::NoResponseError');
         error.isDOMEventMessageBusNoResponseError = true;
